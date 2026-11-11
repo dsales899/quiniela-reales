@@ -96,7 +96,8 @@ test('OK: només amb la columna completa i després queda bloquejada', async () 
   await assertFails(pick(db, 'oberta', 'pere', { ok: false }));
 });
 test('OK: un administrador la pot desbloquejar, però no canviar signes', async () => {
-  await assertSucceeds(pick(as('pere'), 'oberta', 'pere', { ...full, ok: true, okAt: serverTimestamp() }));
+  await assertSucceeds(pick(as('pere'), 'oberta', 'pere', full));
+  await assertSucceeds(pick(as('pere'), 'oberta', 'pere', { ok: true, okAt: serverTimestamp() }));
   const ref = doc(as('denis'), 'jornades', 'oberta', 'picks', 'pere');
   await assertFails(updateDoc(ref, { s1: 'X', updatedAt: serverTimestamp() }));
   await assertFails(updateDoc(doc(as('pere'), 'jornades', 'oberta', 'picks', 'pere'), { ok: false, updatedAt: serverTimestamp() }));

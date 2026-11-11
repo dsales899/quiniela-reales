@@ -52,8 +52,6 @@ service cloud.firestore {
         && full(d.get('s11', '')) && full(d.get('s12', '')) && full(d.get('s13', '')) && full(d.get('s14', ''))
         && fullGoal(d.get('pleH', '')) && fullGoal(d.get('pleA', ''));
     }
-    // L'OK només es pot donar amb la columna completa, i queda registrada l'hora.
-    function okConfirm(d) { return d.get('ok', false) == false || (d.ok == true && complete(d) && d.okAt == request.time); }
 
     // Primer accés amb el codi d'invitació. El codi es guarda només com a hash en aquestes regles.
     match /claims/{uid} {
@@ -93,12 +91,19 @@ service cloud.firestore {
         return get(/databases/$(database)/documents/jornades/$(id)).data.state == 'open'
           && request.time < get(/databases/$(database)/documents/jornades/$(id)).data.deadline;
       }
+      // Donar l'OK: només canvia l'OK i comprova que la columna ja desada és completa.
+      function okGiven() {
+        return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ok', 'okAt', 'updatedAt'])
+          && request.resource.data.ok == true && request.resource.data.okAt == request.time
+          && request.resource.data.updatedAt == request.time && complete(resource.data);
+      }
       match /picks/{player} {
         allow read: if active();
         allow create: if active() && slug() == player && openNow()
-          && okPick(request.resource.data) && okConfirm(request.resource.data);
+          && !request.resource.data.keys().hasAny(['ok', 'okAt']) && okPick(request.resource.data);
         allow update: if (active() && slug() == player && openNow() && resource.data.get('ok', false) != true
-            && okPick(request.resource.data) && okConfirm(request.resource.data))
+            && (okGiven() || (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['ok', 'okAt'])
+              && okPick(request.resource.data))))
           // Denis i Enric només poden treure l'OK perquè l'amic corregeixi la columna.
           || (isAdmin() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ok', 'updatedAt'])
             && request.resource.data.ok == false && request.resource.data.updatedAt == request.time);

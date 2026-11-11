@@ -162,7 +162,9 @@ export function startApp(store, opts = {}) {
       return `<div class="okask" data-k="oka"><b>Segur? Després no podràs canviar cap signe.</b><span>Només Denis o Enric la poden tornar a obrir.</span>
         <div class="two"><button class="btn ghost" data-act="ok-no">Encara no</button><button class="btn ink" data-act="ok-yes">Sí, dono l’OK</button></div></div>`;
     }
-    return `<button class="btn ink okbtn" data-k="okbtn" data-act="ok-ask">Dono l’OK a la meua columna</button>`;
+    const err = S.errors[`${j.id}:ok`];
+    const msg = err ? `<p class="okhint" style="color:var(--bad)">${err.retry ? 'No s’ha pogut donar l’OK. Torna-ho a provar.' : 'No s’ha pogut donar l’OK: la jornada està tancada o ja l’havies donat.'}</p>` : '';
+    return `<button class="btn ink okbtn" data-k="okbtn" data-act="ok-ask">Dono l’OK a la meua columna</button>${msg}`;
   }
 
   // ---------- Avisos ----------
@@ -631,8 +633,7 @@ export function startApp(store, opts = {}) {
     'ok-yes': () => {
       const j = J(); S.okAsk = null;
       if (!columnStatus(picksFor(j)[me()], j.matches).complete) { toast('Encara falten signes.'); return; }
-      persist(j, 'ok', { ok: true }, () => store.confirm(j.id, me()));
-      toast('OK donat. Ja pots fer el pagament.');
+      persist(j, 'ok', { ok: true }, () => store.confirm(j.id, me())).then(() => { if (!S.errors[`${j.id}:ok`]) toast('OK donat. Ja pots fer el pagament.'); });
     },
     'ad-unlock': (b) => { const j = J(); const p = PLAYERS.find((x) => x.id === b.dataset.v); adminRun(() => store.unlock(j.id, p.id), `Columna de ${p.name} desbloquejada.`); },
     'ad-paid': (b) => { const j = J(); const v = !(S.payments[j.id] || {})[b.dataset.v]; adminRun(() => store.setPaid(j.id, b.dataset.v, v), v ? 'Marcat com a pagat.' : 'Pagament desmarcat.'); },
