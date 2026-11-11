@@ -1,0 +1,5 @@
+node_modules
+invitacions.txt
+firestore.rules
+.firebase
+*.log

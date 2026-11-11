@@ -1,0 +1,41 @@
+name: Publica i actualitza dades
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '17 5 * * *'
+  workflow_dispatch:
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: false
+jobs:
+  publica:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # Cada matí (o en executar-ho a mà) es baixen les dades; si falla, es publica amb les d'ahir.
+      - name: Dades diàries
+        if: github.event_name != 'push'
+        continue-on-error: true
+        run: |
+          node scripts/sync-stats.mjs
+          git config user.name "quiniela-reales"
+          git config user.email "actions@users.noreply.github.com"
+          git add public/data/stats.json
+          git diff --cached --quiet || (git commit -m "Actualitza les dades dels equips" && git push)
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+      - id: deploy
+        uses: actions/deploy-pages@v4

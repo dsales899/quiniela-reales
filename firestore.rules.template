@@ -1,0 +1,113 @@
+rules_version = '2';
+// Les regles fan la validació real al servidor: permisos, terminis i format dels pronòstics.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function claimPath() { return /databases/$(database)/documents/claims/$(request.auth.uid); }
+    function playerPath(s) { return /databases/$(database)/documents/players/$(s); }
+    function slug() { return get(claimPath()).data.player; }
+    function active() {
+      return signedIn() && exists(claimPath()) && exists(playerPath(slug()))
+        && get(playerPath(slug())).data.uid == request.auth.uid;
+    }
+    function isAdmin() { return active() && get(playerPath(slug())).data.role == 'admin'; }
+    function invites() { return __INVITES__; }
+
+    function okSign(v) { return v in ['', '1', 'X', '2', '1X', 'X2', '12']; }
+    function dbl(d, k) { return d.get(k, '') in ['1X', 'X2', '12'] ? 1 : 0; }
+    // Com a màxim un doble per columna.
+    function oneDouble(d) {
+      return dbl(d, 's1') + dbl(d, 's2') + dbl(d, 's3') + dbl(d, 's4') + dbl(d, 's5') + dbl(d, 's6') + dbl(d, 's7')
+        + dbl(d, 's8') + dbl(d, 's9') + dbl(d, 's10') + dbl(d, 's11') + dbl(d, 's12') + dbl(d, 's13') + dbl(d, 's14') <= 1;
+    }
+    function okGoal(v) { return v in ['', '0', '1', '2', 'M']; }
+    function okRev(v) { return v is int; }
+    function okSigns1(d) {
+      return okSign(d.get('s1', '')) && okSign(d.get('s2', '')) && okSign(d.get('s3', '')) && okSign(d.get('s4', ''))
+        && okSign(d.get('s5', '')) && okSign(d.get('s6', '')) && okSign(d.get('s7', ''));
+    }
+    function okSigns2(d) {
+      return okSign(d.get('s8', '')) && okSign(d.get('s9', '')) && okSign(d.get('s10', '')) && okSign(d.get('s11', ''))
+        && okSign(d.get('s12', '')) && okSign(d.get('s13', '')) && okSign(d.get('s14', ''));
+    }
+    function okRevs(d) {
+      return okRev(d.get('r1', 0)) && okRev(d.get('r2', 0)) && okRev(d.get('r3', 0)) && okRev(d.get('r4', 0))
+        && okRev(d.get('r5', 0)) && okRev(d.get('r6', 0)) && okRev(d.get('r7', 0)) && okRev(d.get('r8', 0))
+        && okRev(d.get('r9', 0)) && okRev(d.get('r10', 0)) && okRev(d.get('r11', 0)) && okRev(d.get('r12', 0))
+        && okRev(d.get('r13', 0)) && okRev(d.get('r14', 0)) && okRev(d.get('rP', 0));
+    }
+    function okPick(d) {
+      return d.keys().hasOnly(['s1','s2','s3','s4','s5','s6','s7','s8','s9','s10','s11','s12','s13','s14',
+          'r1','r2','r3','r4','r5','r6','r7','r8','r9','r10','r11','r12','r13','r14','rP','pleH','pleA','ok','okAt','updatedAt'])
+        && okSigns1(d) && okSigns2(d) && oneDouble(d) && okRevs(d)
+        && okGoal(d.get('pleH', '')) && okGoal(d.get('pleA', ''))
+        && d.updatedAt == request.time;
+    }
+
+    function full(v) { return v in ['1', 'X', '2', '1X', 'X2', '12']; }
+    function fullGoal(v) { return v in ['0', '1', '2', 'M']; }
+    function complete(d) {
+      return full(d.get('s1', '')) && full(d.get('s2', '')) && full(d.get('s3', '')) && full(d.get('s4', '')) && full(d.get('s5', ''))
+        && full(d.get('s6', '')) && full(d.get('s7', '')) && full(d.get('s8', '')) && full(d.get('s9', '')) && full(d.get('s10', ''))
+        && full(d.get('s11', '')) && full(d.get('s12', '')) && full(d.get('s13', '')) && full(d.get('s14', ''))
+        && fullGoal(d.get('pleH', '')) && fullGoal(d.get('pleA', ''));
+    }
+    // L'OK només es pot donar amb la columna completa, i queda registrada l'hora.
+    function okConfirm(d) { return d.get('ok', false) == false || (d.ok == true && complete(d) && d.okAt == request.time); }
+
+    // Primer accés amb el codi d'invitació. El codi es guarda només com a hash en aquestes regles.
+    match /claims/{uid} {
+      allow get: if signedIn() && request.auth.uid == uid;
+      allow create: if signedIn() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['player', 'code'])
+        && request.resource.data.player in invites()
+        && hashing.sha256(request.resource.data.code).toHexString().lower() == invites()[request.resource.data.player]
+        && !exists(playerPath(request.resource.data.player));
+    }
+    match /players/{player} {
+      allow read: if active();
+      allow create: if signedIn() && player in invites()
+        && request.resource.data.keys().hasOnly(['uid', 'role'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.role == (player in ['denis', 'enric'] ? 'admin' : 'member')
+        && getAfter(claimPath()).data.player == player;
+      allow delete: if isAdmin();
+    }
+    match /access/{player} {
+      allow get: if true;
+      allow write: if isAdmin();
+    }
+    match /settings/{id} {
+      allow read: if active();
+      allow write: if isAdmin();
+    }
+    match /jornades/{id} {
+      allow read: if active();
+      allow create: if isAdmin() && request.resource.data.deadline is timestamp;
+      allow update: if isAdmin() && request.resource.data.deadline is timestamp
+        && (!(resource.data.state in ['closed', 'final'] && request.resource.data.state == 'open')
+            || request.resource.data.reopenLog.size() > resource.data.reopenLog.size());
+
+      // Cadascú només escriu la seua columna, amb la jornada oberta, dins del termini i sense l'OK donat.
+      function openNow() {
+        return get(/databases/$(database)/documents/jornades/$(id)).data.state == 'open'
+          && request.time < get(/databases/$(database)/documents/jornades/$(id)).data.deadline;
+      }
+      match /picks/{player} {
+        allow read: if active();
+        allow create: if active() && slug() == player && openNow()
+          && okPick(request.resource.data) && okConfirm(request.resource.data);
+        allow update: if (active() && slug() == player && openNow() && resource.data.get('ok', false) != true
+            && okPick(request.resource.data) && okConfirm(request.resource.data))
+          // Denis i Enric només poden treure l'OK perquè l'amic corregeixi la columna.
+          || (isAdmin() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ok', 'updatedAt'])
+            && request.resource.data.ok == false && request.resource.data.updatedAt == request.time);
+      }
+      // Pagaments: només els veuen i els marquen els administradors.
+      match /payments/{player} {
+        allow read: if isAdmin();
+        allow write: if isAdmin() && request.resource.data.keys().hasOnly(['paid']) && request.resource.data.paid is bool;
+      }
+    }
+  }
+}
