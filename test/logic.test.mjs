@@ -243,3 +243,8 @@ test('temporades per als enfrontaments', async () => {
   assert.deepEqual(seasonRanges(new Date('2026-11-11T05:00:00Z'), 3), ['20260701-20261111', '20250701-20260630', '20240701-20250630']);
   assert.equal(seasonRanges(new Date('2027-03-01T05:00:00Z'), 1)[0], '20260701-20270301');
 });
+
+test('mesos per a ESPN', async () => {
+  const { monthRanges } = await import('../scripts/sync-stats.mjs');
+  assert.deepEqual(monthRanges('20260701-20260915'), ['20260701-20260731', '20260801-20260831', '20260901-20260915']);
+});

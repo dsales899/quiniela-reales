@@ -21,7 +21,7 @@ export const COMPS = {
 export const EXTRA = { ENG: 'eng.1', ITA: 'ita.1', GER: 'ger.1', FRA: 'fra.1', POR: 'por.1', NED: 'ned.1', BEL: 'bel.1', TUR: 'tur.1', SCO: 'sco.1' };
 // Temporades guardades per als enfrontaments (l'actual i les quatre anteriors).
 const SEASONS = Number(process.env.SYNC_SEASONS ?? 5);
-const PAUSE = Number(process.env.SYNC_PAUSE ?? 1500);
+const PAUSE = Number(process.env.SYNC_PAUSE ?? 400);
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function get(url) {
@@ -75,10 +75,24 @@ export function seasonRanges(now, count) {
     return `${ymd(new Date(Date.UTC(y, 6, 1)))}-${ymd(to)}`;
   });
 }
+/** ESPN no accepta períodes llargs: cada temporada es demana mes a mes. */
+export function monthRanges(range) {
+  const [a, b] = range.split('-');
+  const d = (s) => new Date(Date.UTC(+s.slice(0, 4), +s.slice(4, 6) - 1, +s.slice(6, 8)));
+  const end = d(b); const out = [];
+  for (let cur = d(a); cur <= end;) {
+    const next = new Date(Date.UTC(cur.getUTCFullYear(), cur.getUTCMonth() + 1, 1));
+    const last = new Date(Math.min(next.getTime() - 864e5, end.getTime()));
+    out.push(`${ymd(cur)}-${ymd(last)}`); cur = next;
+  }
+  return out;
+}
+const OFF_SEASON = new Set([6]); // juliol: gairebé sense partits oficials
 async function results(espn, code, ranges, warnings, label) {
-  const out = [];
-  for (const r of ranges) {
-    try { out.push(...toMatches(await get(`${SITE}/${espn}/scoreboard?dates=${r}&limit=1000`), code)); } catch (e) { warnings.push(`${label} (${r}): ${e.message}`); }
+  const out = []; let fails = 0;
+  for (const r of ranges.flatMap(monthRanges)) {
+    if (OFF_SEASON.has(+r.slice(4, 6) - 1)) continue;
+    try { out.push(...toMatches(await get(`${SITE}/${espn}/scoreboard?dates=${r}&limit=500`), code)); } catch (e) { fails += 1; if (fails <= 2) warnings.push(`${label} (${r}): ${e.message}`); }
   }
   return out;
 }
