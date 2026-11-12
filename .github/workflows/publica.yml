@@ -10,7 +10,7 @@ permissions:
   pages: write
   id-token: write
 concurrency:
-  group: pages
+  group: publica-quiniela
   cancel-in-progress: false
 jobs:
   publica:
