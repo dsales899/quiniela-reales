@@ -72,11 +72,21 @@ export function seasons(now, count) {
   return Array.from({ length: count }, (_, i) => start - i);
 }
 /** ESPN no deixa demanar períodes de dates: es baixa el calendari de cada equip de la competició. */
+const teamCache = {};
+async function teamIds(espn) {
+  if (!teamCache[espn]) {
+    const data = await get(`${SITE}/${espn}/teams`);
+    teamCache[espn] = (data.sports?.[0]?.leagues?.[0]?.teams || []).map((t) => t.team?.id).filter(Boolean);
+  }
+  return teamCache[espn];
+}
+// Els equips que pugen i baixen tenen els enfrontaments antics a l'altra categoria.
+const SISTER = { 'esp.1': 'esp.2', 'esp.2': 'esp.1' };
 async function results(espn, code, years, warnings, label) {
   let ids = [];
   try {
-    const data = await get(`${SITE}/${espn}/teams`);
-    ids = (data.sports?.[0]?.leagues?.[0]?.teams || []).map((t) => t.team?.id).filter(Boolean);
+    ids = await teamIds(espn);
+    if (SISTER[espn] && years.length > 1) ids = [...new Set([...ids, ...await teamIds(SISTER[espn])])];
   } catch (e) { warnings.push(`${label} (equips): ${e.message}`); return []; }
   const out = []; let fails = 0;
   for (const y of years) {
