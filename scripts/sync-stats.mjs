@@ -19,8 +19,8 @@ export const COMPS = {
 // Lligues d'altres països: només resultats, perquè els equips de Champions, Europa League i
 // Conference també tinguin la forma dels últims 5 partits.
 export const EXTRA = { ENG: 'eng.1', ITA: 'ita.1', GER: 'ger.1', FRA: 'fra.1', POR: 'por.1', NED: 'ned.1', BEL: 'bel.1', TUR: 'tur.1', SCO: 'sco.1' };
-// Temporades guardades per als enfrontaments (l'actual i les quatre anteriors).
-const SEASONS = Number(process.env.SYNC_SEASONS ?? 5);
+// Temporades guardades per als enfrontaments (l'actual i les dues anteriors).
+const SEASONS = Number(process.env.SYNC_SEASONS ?? 3);
 const PAUSE = Number(process.env.SYNC_PAUSE ?? 400);
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -66,33 +66,23 @@ export function toMatches(data, comp) {
   return out;
 }
 const ymd = (d) => d.toISOString().slice(0, 10).replace(/-/g, '');
-/** Una consulta per temporada (de juliol a juny), la més recent primer. */
-export function seasonRanges(now, count) {
+/** Temporades d'ESPN (any d'inici: 2026 vol dir 2026-27), la més recent primer. */
+export function seasons(now, count) {
   const start = now.getUTCMonth() >= 6 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;
-  return Array.from({ length: count }, (_, i) => {
-    const y = start - i;
-    const to = i === 0 ? now : new Date(Date.UTC(y + 1, 5, 30));
-    return `${ymd(new Date(Date.UTC(y, 6, 1)))}-${ymd(to)}`;
-  });
+  return Array.from({ length: count }, (_, i) => start - i);
 }
-/** ESPN no accepta períodes llargs: cada temporada es demana mes a mes. */
-export function monthRanges(range) {
-  const [a, b] = range.split('-');
-  const d = (s) => new Date(Date.UTC(+s.slice(0, 4), +s.slice(4, 6) - 1, +s.slice(6, 8)));
-  const end = d(b); const out = [];
-  for (let cur = d(a); cur <= end;) {
-    const next = new Date(Date.UTC(cur.getUTCFullYear(), cur.getUTCMonth() + 1, 1));
-    const last = new Date(Math.min(next.getTime() - 864e5, end.getTime()));
-    out.push(`${ymd(cur)}-${ymd(last)}`); cur = next;
-  }
-  return out;
-}
-const OFF_SEASON = new Set([6]); // juliol: gairebé sense partits oficials
-async function results(espn, code, ranges, warnings, label) {
+/** ESPN no deixa demanar períodes de dates: es baixa el calendari de cada equip de la competició. */
+async function results(espn, code, years, warnings, label) {
+  let ids = [];
+  try {
+    const data = await get(`${SITE}/${espn}/teams`);
+    ids = (data.sports?.[0]?.leagues?.[0]?.teams || []).map((t) => t.team?.id).filter(Boolean);
+  } catch (e) { warnings.push(`${label} (equips): ${e.message}`); return []; }
   const out = []; let fails = 0;
-  for (const r of ranges.flatMap(monthRanges)) {
-    if (OFF_SEASON.has(+r.slice(4, 6) - 1)) continue;
-    try { out.push(...toMatches(await get(`${SITE}/${espn}/scoreboard?dates=${r}&limit=500`), code)); } catch (e) { fails += 1; if (fails <= 2) warnings.push(`${label} (${r}): ${e.message}`); }
+  for (const y of years) {
+    for (const id of ids) {
+      try { out.push(...toMatches(await get(`${SITE}/${espn}/teams/${id}/schedule?season=${y}`), code)); } catch (e) { fails += 1; if (fails <= 2) warnings.push(`${label} (${id}, ${y}): ${e.message}`); }
+    }
   }
   return out;
 }
@@ -103,9 +93,9 @@ export async function build(now = new Date()) {
       const table = toTable(await get(`${STAND}/${c.espn}/standings`), code);
       if (table.length) comps[code] = { name: c.name, table }; else warnings.push(`${c.name}: classificació buida`);
     } catch (e) { warnings.push(`${c.name}: ${e.message}`); }
-    matches.push(...await results(c.espn, code, seasonRanges(now, SEASONS), warnings, c.name));
+    matches.push(...await results(c.espn, code, seasons(now, SEASONS), warnings, c.name));
   }
-  for (const [code, espn] of Object.entries(EXTRA)) matches.push(...await results(espn, code, seasonRanges(now, 1), warnings, espn));
+  for (const [code, espn] of Object.entries(EXTRA)) matches.push(...await results(espn, code, seasons(now, 1), warnings, espn));
   const seen = new Set();
   const unique = matches.filter((m) => { const k = `${m.d}|${m.h}|${m.a}`; if (seen.has(k)) return false; seen.add(k); return true; });
   return { output: { source: 'ESPN', updatedAt: now.toISOString(), comps, matches: unique }, warnings };
@@ -126,5 +116,5 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   if (!Object.keys(output.comps).length) { console.error('No s’ha pogut baixar cap competició. No es toca el fitxer.'); process.exit(1); }
   mkdirSync('public/data', { recursive: true });
   writeFileSync(file, JSON.stringify(output));
-  console.log(`Fet: ${Object.keys(output.comps).length} competicions, ${output.matches.length} partits.`);
+  console.log(`Fet: ${Object.keys(output.comps).length} competicions, ${output.matches.length} partits.`, JSON.stringify(output.matches.reduce((a, m) => ({ ...a, [m.c]: (a[m.c] || 0) + 1 }), {})));
 }

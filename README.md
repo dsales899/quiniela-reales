@@ -45,7 +45,7 @@ Després fes la prova final amb dos mòbils: dos amics desant alhora, intent de 
 
 ## Dades diàries dels equips
 
-Classificació i ratxa (últims 5 partits) de Primera, Segona, Champions, Europa League, Conference i Liga F, i els últims 5 enfrontaments entre dos equips (de les cinc últimes temporades). També es baixen els resultats de les lligues d'Anglaterra, Itàlia, Alemanya, França, Portugal, Països Baixos, Bèlgica, Turquia i Escòcia perquè els equips europeus tinguin forma. Tot gratuït i sense cap clau.
+Classificació i ratxa (últims 5 partits) de Primera, Segona, Champions, Europa League, Conference i Liga F, i els últims 5 enfrontaments entre dos equips (de les tres últimes temporades). També es baixen els resultats de les lligues d'Anglaterra, Itàlia, Alemanya, França, Portugal, Països Baixos, Bèlgica, Turquia i Escòcia perquè els equips europeus tinguin forma. Tot gratuït i sense cap clau.
 
 - Font: l'API pública d'ESPN. No és oficial ni té garantia: si un dia canvia, aquella competició mostra «Dades no disponibles» i es conserven les dades del dia anterior.
 - S'actualitza un cop al dia, a primera hora, amb GitHub Actions (gratuït).
