@@ -123,14 +123,13 @@ test('CSV i WhatsApp mantenen l’ordre dels vuit', () => {
   assert.match(L.whatsappSummary(j, {}), /En De Pe Da Po He Al Bo/);
 });
 
-test('forma, casa i fora, i enfrontaments', () => {
+test('forma i enfrontaments', () => {
   const stats = { matches: [
     { d: '2026-10-01', h: 'barcelona', a: 'betis', hg: 2, ag: 0 },
     { d: '2026-10-08', h: 'betis', a: 'barcelona', hg: 1, ag: 1 },
     { d: '2026-10-15', h: 'getafe', a: 'barcelona', hg: 1, ag: 0 },
   ], comps: { PD: { name: 'Primera', table: [{ team: 'barcelona', pos: 1, pts: 4 }] } } };
   assert.deepEqual(L.teamForm(stats, 'barcelona').map((f) => f.res), ['D', 'E', 'V']);
-  assert.deepEqual(L.homeAway(stats, 'barcelona').away, { V: 0, E: 1, D: 1 });
   assert.equal(L.headToHead(stats, 'betis', 'barcelona').length, 2);
   assert.equal(L.standingFor(stats, 'barcelona').pos, 1);
   assert.equal(L.standingFor(stats, 'osasuna'), null);
@@ -242,4 +241,31 @@ test('temporades d’ESPN', async () => {
   const { seasons } = await import('../scripts/sync-stats.mjs');
   assert.deepEqual(seasons(new Date('2026-11-11T05:00:00Z'), 3), [2026, 2025, 2024]);
   assert.deepEqual(seasons(new Date('2027-03-01T05:00:00Z'), 1), [2026]);
+});
+
+test('forma per tipus de competició', () => {
+  const stats = { matches: [
+    { d: '2026-10-01', h: 'arsenal', a: 'liverpool', hg: 2, ag: 0, c: 'ENG' },
+    { d: '2026-10-04', h: 'arsenal', a: 'psg', hg: 1, ag: 1, c: 'CL' },
+    { d: '2026-10-08', h: 'hull', a: 'arsenal', hg: 1, ag: 0, c: 'EFL' },
+    { d: '2026-10-12', h: 'arsenal', a: 'chelsea', hg: 0, ag: 3, c: 'ENG' },
+  ] };
+  assert.deepEqual(L.teamForm(stats, 'arsenal', 5, 'all').map((f) => f.res), ['D', 'D', 'E', 'V']);
+  assert.deepEqual(L.teamForm(stats, 'arsenal', 5, 'lliga').map((f) => f.comp), ['ENG', 'ENG']);
+  assert.deepEqual(L.teamForm(stats, 'arsenal', 5, 'copa').map((f) => f.res), ['D']);
+  assert.deepEqual(L.teamForm(stats, 'arsenal', 5, 'europa').map((f) => f.res), ['E']);
+  assert.deepEqual(L.teamForm(stats, 'arsenal', 5, 'CL').map((f) => f.res), ['E']);
+  assert.equal(L.compName('CDR'), 'Copa del Rei');
+});
+
+test('Ple al 15 consensuat: mitjana de tots', () => {
+  const matches = [{ n: 15, home: 'A', away: 'B', rev: 0 }];
+  const picks = { denis: { pleH: '2', pleA: '1', rP: 0 }, enric: { pleH: 'M', pleA: '0', rP: 0 }, dani: { pleH: '1', pleA: '1', rP: 0 }, pova: { pleH: '2', pleA: '' } };
+  const c = L.pleConsensus(picks, matches);
+  assert.equal(c.count, 3);
+  assert.equal(c.h, '2'); assert.equal(c.a, '1');
+  assert.equal(c.avgLabel, '2,0 - 0,7');
+  assert.equal(L.pleConsensus({}, matches), null);
+  const big = L.pleConsensus({ denis: { pleH: 'M', pleA: '2', rP: 0 }, enric: { pleH: '2', pleA: '2', rP: 0 } }, matches);
+  assert.equal(big.h, 'M'); assert.equal(big.a, '2');
 });
