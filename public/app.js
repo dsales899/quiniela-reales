@@ -4,7 +4,7 @@ import {
   TEAM_GROUPS, STAT_COMPS, searchTeams, norm, toggleSign, checkSignChange, isDouble, doubleMatch, streakLabel, teamById, PLAYERS, SIGNS, GOALS, CATEGORIES, STATE_LABEL, teamView, validSign, needsReview, pleNeedsReview, pleDone, first14,
   columnStatus, progressLabel, tally, tallyLabel, rowAgreement, uncoveredSigns, compareColumns, similarPairs, hits,
   effectiveState, canEdit, fmtDay, fmtFull, toLocalInput, fromLocalInput, countdown, parseMatchList, mergeMatches,
-  affectedPicks, jornadaTitle, whatsappMatches, whatsappSummary, gridCsv, teamForm, homeAway, headToHead, standingFor,
+  affectedPicks, jornadaTitle, whatsappMatches, whatsappSummary, gridCsv, teamForm, headToHead, standingFor, FORM_KINDS, compName, pleConsensus,
 } from './logic.js';
 
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -45,7 +45,7 @@ export function startApp(store, opts = {}) {
   const S = {
     session: store.session?.() || null, app: { activeId: null, access: {} }, jornades: [], picks: {}, payments: {}, okAsk: null, pick: null, pickGroup: null, stats: opts.stats || null, statsState: opts.stats ? 'ok' : 'loading',
     selectedId: null, manual: false, group: 'totes', season: null, tab: 'jornada', compare: null, onlyEqual: false, onlyGap: false, expanded: null, wide: false,
-    overlay: {}, errors: {}, saving: 0, saved: false, toast: '', copyText: '', dataMatch: 1, statsComp: null,
+    overlay: {}, errors: {}, saving: 0, saved: false, toast: '', copyText: '', dataMatch: 1, statsComp: null, formKind: 'all',
     login: { step: 'name', player: null, pin: '', code: '', error: '', first: false, busy: false },
     ad: { reason: '', otherNum: '', results: null, ple: null, note: '', show: null, resultsFor: null }, ed: null,
   };
@@ -140,7 +140,7 @@ export function startApp(store, opts = {}) {
       const v = stale ? '' : (mine?.[side === 'h' ? 'pleH' : 'pleA'] || '');
       return `<div class="plerow">${team(name)}<div class="boxes" role="group" aria-label="Gols de ${esc(name)}">${GOALS.map((g) => `<button class="box" data-act="ple" data-side="${side}" data-v="${g}" aria-pressed="${v === g}" ${editable ? '' : 'disabled'}>${g}</button>`).join('')}</div></div>`;
     };
-    const ple = pm ? `<div class="plebox" data-k="ple"><div class="pletitle">Ple al 15</div>${pleRow('h', pm.home)}${pleRow('a', pm.away)}<p class="help">M vol dir tres gols o més.</p>
+    const ple = pm ? `<div class="plebox" data-k="ple"><div class="pletitle">Ple al 15</div>${pleRow('h', pm.home)}${pleRow('a', pm.away)}<p class="help">M vol dir tres gols o més.</p>${pleHint(j)}
       ${stale ? '<div class="rowmsg review" style="grid-column:auto">Partit canviat: torna a triar el Ple al 15</div>' : ''}${rowMessage(j, 'pleh') || rowMessage(j, 'plea')}</div>` : '';
     const pct = ((status.signs + (status.ple ? 1 : 0)) / 15) * 100;
     const dbl = doubleMatch(mine, j.matches);
@@ -176,6 +176,12 @@ export function startApp(store, opts = {}) {
     const top = mineFirst[0];
     return `<details class="alert on" data-k="on"><summary><b>${list.length}</b><span>${esc(name(top))}: ${top.equal} de 14 iguals</span><em>Detall</em></summary>
       <ul>${mineFirst.map((x) => `<li><strong>${esc(name(x))}: ${x.equal} de 14 iguals</strong><small>${esc(x.verdict ? `${x.verdict} · ` : '')}${esc(x.pleLabel)}</small></li>`).join('')}</ul></details>`;
+  }
+
+  /** A la quiniela només hi cap un Ple al 15: el resultat consensuat surt de la mitjana de tots. */
+  function pleHint(j) {
+    const c = pleConsensus(picksFor(j), j.matches);
+    return c ? `<p class="plecons" data-k="plecons">Consens del grup: <b>${esc(c.h)}-${esc(c.a)}</b> <span>(mitjana ${esc(c.avgLabel)} de ${c.count})</span></p>` : '';
   }
 
   // ---------- Graella ----------
@@ -220,7 +226,9 @@ export function startApp(store, opts = {}) {
       const official = res[side];
       return `<td class="cell ${stale ? 'review' : g ? 'pg' : 'empty'} ${official && g ? (g === official ? 'hit' : 'miss') : ''}">${stale ? '!' : g || '—'}</td>`;
     }).join('')}</tr>`;
-    const ple = pm && !S.onlyEqual && !S.onlyGap ? plerow('ple1', 'h', pm.home) + plerow('ple2', 'a', pm.away) : '';
+    const cons = pm ? pleConsensus(picks, j.matches) : null;
+    const consRow = cons ? `<tr class="ple pleavg" data-k="pleavg"><th scope="row"><div class="rowbtn" style="grid-template-columns:minmax(0,1fr)"><span class="sig">Consens</span></div></th><td colspan="${PLAYERS.length}"><div class="avgline"><b class="avgres">${esc(cons.h)}-${esc(cons.a)}</b><span>Mitjana ${esc(cons.avgLabel)} · ${cons.count} de ${cons.total}${cons.topCount > 1 ? ` · Més repetit: ${esc(cons.top)} (${cons.topCount})` : ''}</span></div></td></tr>` : '';
+    const ple = pm && !S.onlyEqual && !S.onlyGap ? plerow('ple1', 'h', pm.home) + plerow('ple2', 'a', pm.away) + consRow : '';
     const empty = rows ? '' : `<tr data-k="none"><td colspan="9"><div class="empty">Cap partit compleix aquest filtre.</div></td></tr>`;
     const friendChips = PLAYERS.filter((p) => p.id !== me()).map((p) => `<button class="mini" data-act="compare" data-v="${p.id}" aria-pressed="${S.compare === p.id}">${esc(p.name)}</button>`).join('');
     const compare = S.compare ? compareView(j, picks) : '';
@@ -273,21 +281,19 @@ export function startApp(store, opts = {}) {
         const s = standingFor(stats, id, j?.category === 'europea' ? ['CL', 'EL', 'ECL'] : ['PD', 'SD', 'LF']);
         return s ? `<span class="stat">${ordinal(s.pos)} · ${s.pts} pts</span><span class="statsub">${esc(s.comp)} · ${s.pg} PJ · ${s.v}V ${s.e}E ${s.d}D</span>` : '<span class="nodata">Dades no disponibles</span>';
       });
+      const kind = S.formKind;
       const form = (t) => block(t, (id) => {
-        const f = teamForm(stats, id);
-        return f.length ? `<div class="form">${f.map((x) => `<span class="fbox ${x.res}" title="${esc(x.gf)}-${esc(x.ga)} ${esc(x.home ? 'a casa' : 'fora')}">${x.res}</span>`).join('')}</div><span class="streak ${f[0].res}">${esc(streakLabel(f))}</span>` : '<span class="nodata">Dades no disponibles</span>';
+        const f = teamForm(stats, id, 5, kind);
+        if (!f.length) return `<span class="nodata">${kind === 'all' ? 'Dades no disponibles' : 'Sense partits'}</span>`;
+        const comps = [...new Set(f.map((x) => compName(x.comp)))].join(' · ');
+        return `<div class="form">${f.map((x) => `<span class="fbox ${x.res}" title="${esc(compName(x.comp))}: ${esc(x.gf)}-${esc(x.ga)}">${x.res}</span>`).join('')}</div><span class="streak ${f[0].res}">${esc(streakLabel(f))}</span><span class="statsub">${esc(comps)}</span>`;
       });
-      const split = (t) => block(t, (id) => {
-        if (!teamForm(stats, id).length) return '<span class="nodata">Dades no disponibles</span>';
-        const ha = homeAway(stats, id);
-        return `<span class="statsub"><b>Casa</b> ${ha.home.V}V ${ha.home.E}E ${ha.home.D}D</span><span class="statsub"><b>Fora</b> ${ha.away.V}V ${ha.away.E}E ${ha.away.D}D</span>`;
-      });
+      const kinds = FORM_KINDS.map(([k, name]) => `<button class="mini" data-act="formkind" data-v="${k}" aria-pressed="${k === kind}">${esc(name)}</button>`).join('');
       const h2h = a.id && b.id ? headToHead(stats, a.id, b.id) : [];
       const h2hList = h2h.length ? `<ul class="h2h">${h2h.map((x) => `<li><small>${esc(new Date(x.d).toLocaleDateString('ca-ES', { day: '2-digit', month: '2-digit', year: '2-digit' }))}</small><span class="r">${esc(teamView(x.h).short)}</span><b>${x.hg}-${x.ag}</b><span>${esc(teamView(x.a).short)}</span></li>`).join('')}</ul>` : '<span class="nodata">Dades no disponibles</span>';
       card = `<div class="slip"><div class="versus"><div>${crest(m.home, 'lg')}<span>${esc(a.short)}</span></div><span>–</span><div>${crest(m.away, 'lg')}<span>${esc(b.short)}</span></div></div>
         <div class="dsec"><h3>Classificació</h3><div class="pair"><div>${standing(a)}</div><div>${standing(b)}</div></div></div>
-        <div class="dsec"><h3>Últims 5 partits</h3><div class="pair"><div>${form(a)}</div><div>${form(b)}</div></div></div>
-        <div class="dsec"><h3>Casa i fora</h3><div class="pair"><div>${split(a)}</div><div>${split(b)}</div></div></div>
+        <div class="dsec"><h3>Últims 5 partits</h3><div class="segment formkinds" role="group" aria-label="Competició">${kinds}</div><div class="pair"><div>${form(a)}</div><div>${form(b)}</div></div></div>
         <div class="dsec"><h3>Últims 5 enfrontaments</h3>${h2hList}</div></div>`;
     }
     const active = S.statsComp || (j?.category === 'europea' ? 'CL' : 'PD');
@@ -599,6 +605,7 @@ export function startApp(store, opts = {}) {
     compare: (b) => { S.compare = S.compare === b.dataset.v ? null : b.dataset.v; paint(); },
     dmatch: (b) => { S.dataMatch = Number(b.dataset.v); paint(); },
     statscomp: (b) => { S.statsComp = b.dataset.v; paint(); },
+    formkind: (b) => { S.formKind = b.dataset.v; paint(); },
     'wa-summary': () => { const j = J(); copy(whatsappSummary(j, picksFor(j)), 'Resum copiat. Ja el pots enganxar a WhatsApp.'); },
     'wa-matches': () => copy(whatsappMatches(J()), 'Partits copiats.'),
     csv() {

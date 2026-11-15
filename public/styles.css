@@ -200,6 +200,13 @@ th.me .colstate.completa { background: #0b7448; }
 .cell.miss { opacity: .62; }
 tr.ple th, tr.ple td { background-color: var(--paper); }
 tr.ple1 th, tr.ple1 td { border-top: 3px double var(--carmine); }
+tr.pleavg td { text-align: left; padding: 6px 8px; }
+.avgline { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 13px; color: var(--muted); font-weight: 600; }
+.avgres { font: 800 22px/1 var(--display); color: var(--carmine); background: var(--soft); border-radius: 5px; padding: 3px 8px; }
+.plecons { font-size: 14px; font-weight: 600; color: var(--muted); }
+.plecons b { color: var(--carmine); font: 800 18px/1 var(--display); }
+.formkinds { margin-bottom: 0; }
+.formkinds .mini { min-height: 32px; flex: 1; }
 tr.detail td { text-align: left; padding: 10px 11px; background: var(--sheet); border-left: 0; }
 .dline { display: grid; gap: 6px; font-size: 14.5px; }
 .dline strong { font-size: 15px; }

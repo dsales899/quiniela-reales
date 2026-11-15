@@ -1,4 +1,4 @@
-// Baixa cada dia les classificacions i els resultats de les sis competicions i escriu public/data/stats.json.
+// Baixa cada dia les classificacions i els resultats de les sis competicions, de les lligues estrangeres i de les copes, i escriu public/data/stats.json.
 // Font: l'API pública d'ESPN, gratuïta i sense clau. No és oficial: si algun dia canvia, l'app mostra
 // «Dades no disponibles» per a aquella competició i la resta continua igual.
 import { writeFileSync, readFileSync, mkdirSync, existsSync } from 'node:fs';
@@ -17,8 +17,29 @@ export const COMPS = {
   LF: { name: 'Liga F', espn: 'esp.w.1' },
 };
 // Lligues d'altres països: només resultats, perquè els equips de Champions, Europa League i
-// Conference també tinguin la forma dels últims 5 partits.
-export const EXTRA = { ENG: 'eng.1', ITA: 'ita.1', GER: 'ger.1', FRA: 'fra.1', POR: 'por.1', NED: 'ned.1', BEL: 'bel.1', TUR: 'tur.1', SCO: 'sco.1' };
+// Conference també tinguin la forma dels últims 5 partits de lliga. Només es baixen els equips
+// que l'app coneix (teams.js). Si un codi d'ESPN no existeix, surt un avís i la resta continua.
+export const EXTRA = {
+  ENG: 'eng.1', ITA: 'ita.1', GER: 'ger.1', FRA: 'fra.1', POR: 'por.1', NED: 'ned.1', BEL: 'bel.1', TUR: 'tur.1', SCO: 'sco.1',
+  AUT: 'aut.1', SUI: 'sui.1', DEN: 'den.1', NOR: 'nor.1', SWE: 'swe.1', GRE: 'gre.1', CZE: 'cze.1', POL: 'pol.1', CRO: 'cro.1',
+  SRB: 'srb.1', ROU: 'rou.1', HUN: 'hun.1', CYP: 'cyp.1', ISR: 'isr.1', UKR: 'ukr.1', BUL: 'bul.1', SVK: 'svk.1', SVN: 'svn.1',
+};
+// Copes de cada país: es baixa el calendari de copa dels equips de les lligues indicades a «from».
+export const CUPS = {
+  CDR: { espn: 'esp.copa_del_rey', from: ['esp.1', 'esp.2'] },
+  SCE: { espn: 'esp.super_cup', from: ['esp.1'] },
+  FAC: { espn: 'eng.fa', from: ['eng.1'] },
+  EFL: { espn: 'eng.league_cup', from: ['eng.1'] },
+  CIT: { espn: 'ita.coppa_italia', from: ['ita.1'] },
+  DFB: { espn: 'ger.dfb_pokal', from: ['ger.1'] },
+  CDF: { espn: 'fra.coupe_de_france', from: ['fra.1'] },
+  TPO: { espn: 'por.taca.portugal', from: ['por.1'] },
+  KNV: { espn: 'ned.cup', from: ['ned.1'] },
+  SCC: { espn: 'sco.tennents', from: ['sco.1'] },
+  SLC: { espn: 'sco.cis', from: ['sco.1'] },
+  BEC: { espn: 'bel.cup', from: ['bel.1'] },
+  TRC: { espn: 'tur.cup', from: ['tur.1'] },
+};
 // Temporades guardades per als enfrontaments (l'actual i les dues anteriors).
 const SEASONS = Number(process.env.SYNC_SEASONS ?? 3);
 const PAUSE = Number(process.env.SYNC_PAUSE ?? 400);
@@ -73,20 +94,21 @@ export function seasons(now, count) {
 }
 /** ESPN no deixa demanar períodes de dates: es baixa el calendari de cada equip de la competició. */
 const teamCache = {};
-async function teamIds(espn) {
+async function teamIds(espn, onlyKnown = false) {
   if (!teamCache[espn]) {
     const data = await get(`${SITE}/${espn}/teams`);
-    teamCache[espn] = (data.sports?.[0]?.leagues?.[0]?.teams || []).map((t) => t.team?.id).filter(Boolean);
+    teamCache[espn] = (data.sports?.[0]?.leagues?.[0]?.teams || []).map((t) => t.team).filter((t) => t?.id);
   }
-  return teamCache[espn];
+  return teamCache[espn].filter((t) => !onlyKnown || teamId(t.displayName) || teamId(t.shortDisplayName)).map((t) => t.id);
 }
 // Els equips que pugen i baixen tenen els enfrontaments antics a l'altra categoria.
 const SISTER = { 'esp.1': 'esp.2', 'esp.2': 'esp.1' };
-async function results(espn, code, years, warnings, label) {
+async function results(espn, code, years, warnings, label, { from = null, onlyKnown = false } = {}) {
   let ids = [];
   try {
-    ids = await teamIds(espn);
-    if (SISTER[espn] && years.length > 1) ids = [...new Set([...ids, ...await teamIds(SISTER[espn])])];
+    for (const src of from || [espn]) ids.push(...await teamIds(src, onlyKnown));
+    if (!from && SISTER[espn] && years.length > 1) ids.push(...await teamIds(SISTER[espn], onlyKnown));
+    ids = [...new Set(ids)];
   } catch (e) { warnings.push(`${label} (equips): ${e.message}`); return []; }
   const out = []; let fails = 0;
   for (const y of years) {
@@ -105,7 +127,8 @@ export async function build(now = new Date()) {
     } catch (e) { warnings.push(`${c.name}: ${e.message}`); }
     matches.push(...await results(c.espn, code, seasons(now, SEASONS), warnings, c.name));
   }
-  for (const [code, espn] of Object.entries(EXTRA)) matches.push(...await results(espn, code, seasons(now, 1), warnings, espn));
+  for (const [code, espn] of Object.entries(EXTRA)) matches.push(...await results(espn, code, seasons(now, 1), warnings, espn, { onlyKnown: true }));
+  for (const [code, cup] of Object.entries(CUPS)) matches.push(...await results(cup.espn, code, seasons(now, 1), warnings, cup.espn, { from: cup.from, onlyKnown: cup.from.some((f) => !f.startsWith('esp.')) }));
   const seen = new Set();
   const unique = matches.filter((m) => { const k = `${m.d}|${m.h}|${m.a}`; if (seen.has(k)) return false; seen.add(k); return true; });
   return { output: { source: 'ESPN', updatedAt: now.toISOString(), comps, matches: unique }, warnings };

@@ -311,6 +311,22 @@ export function jornadaTitle(j) {
   if (j.primeraNum) return `Jornada ${j.primeraNum} de Primera`;
   return 'Jornada';
 }
+// ---------- Ple al 15 consensuat ----------
+const GOAL_NUM = { 0: 0, 1: 1, 2: 2, M: 3 };
+const numToGoal = (x) => (x >= 2.5 ? 'M' : String(Math.round(x)));
+const fmtAvg = (x) => x.toLocaleString('ca-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+/** Mitjana dels Ple al 15 de tots els que l'han posat (M compta com 3) i el resultat que en surt. */
+export function pleConsensus(picks, matches, players = PLAYERS) {
+  const valid = players.map((p) => picks?.[p.id]).filter((p) => pleDone(p, matches));
+  if (!valid.length) return null;
+  const avg = (f) => valid.reduce((sum, p) => sum + GOAL_NUM[p[f]], 0) / valid.length;
+  const avgH = avg('pleH'); const avgA = avg('pleA');
+  const counts = {};
+  for (const p of valid) { const k = `${p.pleH}-${p.pleA}`; counts[k] = (counts[k] || 0) + 1; }
+  const [top, topCount] = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+  return { count: valid.length, total: players.length, avgH, avgA, h: numToGoal(avgH), a: numToGoal(avgA),
+    avgLabel: `${fmtAvg(avgH)} - ${fmtAvg(avgA)}`, top, topCount, counts };
+}
 const cleanPle = (p) => (p?.pleH && p?.pleA ? `${p.pleH}-${p.pleA}` : '—');
 export function whatsappMatches(j) {
   const lines = [`*Quiniela Reales · ${jornadaTitle(j)}*`, `Tanca: ${fmtFull(j.deadline)}`, ''];
@@ -328,6 +344,8 @@ export function whatsappSummary(j, picks, players = PLAYERS) {
   if (ple) {
     lines.push('', `*Ple al 15:* ${ple.home} - ${ple.away}`);
     lines.push(players.map((p) => `${p.name} ${cleanPle(picks[p.id])}`).join(' · '));
+    const c = pleConsensus(picks, j.matches, players);
+    if (c) lines.push(`*Consens:* ${c.h}-${c.a} (mitjana ${c.avgLabel} de ${c.count})`);
   }
   return lines.join('\n');
 }
@@ -347,9 +365,31 @@ function resultFor(row, teamId) {
   return { date: row.d, home, opp: home ? row.a : row.h, gf, ga, res: gf > ga ? 'V' : gf < ga ? 'D' : 'E', comp: row.c };
 }
 const byDateDesc = (a, b) => (a.d < b.d ? 1 : -1);
+/** Codi de competició (stats.json) → nom i tipus: lliga, copa o europa. */
+export const COMP_INFO = {
+  PD: ['Primera', 'lliga'], SD: ['Segona', 'lliga'], LF: ['Liga F', 'lliga'],
+  ENG: ['Premier League', 'lliga'], ITA: ['Serie A', 'lliga'], GER: ['Bundesliga', 'lliga'], FRA: ['Ligue 1', 'lliga'],
+  POR: ['Liga Portugal', 'lliga'], NED: ['Eredivisie', 'lliga'], BEL: ['Pro League', 'lliga'], TUR: ['Süper Lig', 'lliga'],
+  SCO: ['Premiership', 'lliga'], AUT: ['Bundesliga austríaca', 'lliga'], SUI: ['Super League suïssa', 'lliga'],
+  DEN: ['Superliga danesa', 'lliga'], NOR: ['Eliteserien', 'lliga'], SWE: ['Allsvenskan', 'lliga'], GRE: ['Super League grega', 'lliga'],
+  CZE: ['Lliga txeca', 'lliga'], POL: ['Ekstraklasa', 'lliga'], CRO: ['HNL', 'lliga'], SRB: ['Superlliga sèrbia', 'lliga'],
+  ROU: ['Superliga romanesa', 'lliga'], HUN: ['NB I', 'lliga'], CYP: ['Lliga xipriota', 'lliga'], ISR: ['Lliga israeliana', 'lliga'],
+  UKR: ['Lliga ucraïnesa', 'lliga'], BUL: ['Lliga búlgara', 'lliga'], SVK: ['Lliga eslovaca', 'lliga'], SVN: ['Lliga eslovena', 'lliga'],
+  CDR: ['Copa del Rei', 'copa'], SCE: ['Supercopa', 'copa'], FAC: ['FA Cup', 'copa'], EFL: ['Copa de la Lliga', 'copa'],
+  CIT: ['Coppa Italia', 'copa'], DFB: ['DFB-Pokal', 'copa'], CDF: ['Coupe de France', 'copa'], TPO: ['Taça de Portugal', 'copa'],
+  KNV: ['KNVB Beker', 'copa'], SCC: ['Scottish Cup', 'copa'], SLC: ['Scottish League Cup', 'copa'], BEC: ['Copa belga', 'copa'], TRC: ['Copa turca', 'copa'],
+  CL: ['Champions', 'europa'], EL: ['Europa League', 'europa'], ECL: ['Conference', 'europa'],
+};
+export const compName = (code) => COMP_INFO[code]?.[0] || code;
+export const compKind = (code) => COMP_INFO[code]?.[1] || 'lliga';
+/** Filtres dels últims 5 partits: totes les competicions o només lliga, copa o Europa. */
+export const FORM_KINDS = [['all', 'Totes'], ['lliga', 'Lliga'], ['copa', 'Copa'], ['europa', 'Champions']];
+/** comp pot ser un codi (PD, CL...) o un tipus (lliga, copa, europa). */
 export function teamForm(stats, teamId, count = 5, comp = null) {
   if (!stats?.matches || !teamId) return [];
-  return stats.matches.filter((m) => (m.h === teamId || m.a === teamId) && (!comp || m.c === comp)).sort(byDateDesc).slice(0, count)
+  const kinds = ['lliga', 'copa', 'europa'];
+  const ok = (m) => !comp || comp === 'all' || (kinds.includes(comp) ? compKind(m.c) === comp : m.c === comp);
+  return stats.matches.filter((m) => (m.h === teamId || m.a === teamId) && ok(m)).sort(byDateDesc).slice(0, count)
     .map((m) => resultFor(m, teamId));
 }
 const STREAK = { V: ['victòria', 'victòries'], E: ['empat', 'empats'], D: ['derrota', 'derrotes'] };
@@ -364,15 +404,6 @@ export function streakLabel(form) {
   let winless = 0; while (winless < form.length && form[winless].res !== 'V') winless += 1;
   if (winless >= 3) return `${winless} partits sense guanyar`;
   return `Última: ${STREAK[first][0]}`;
-}
-export function homeAway(stats, teamId) {
-  const out = { home: { V: 0, E: 0, D: 0 }, away: { V: 0, E: 0, D: 0 } };
-  for (const m of stats?.matches || []) {
-    if (m.h !== teamId && m.a !== teamId) continue;
-    const r = resultFor(m, teamId);
-    out[r.home ? 'home' : 'away'][r.res] += 1;
-  }
-  return out;
 }
 export function headToHead(stats, a, b, count = 5) {
   if (!stats?.matches) return [];
