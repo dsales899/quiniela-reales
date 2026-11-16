@@ -9,7 +9,7 @@ export const firebaseConfig = {
 };
 // Avisos al mòbil: Consola > Configuració del projecte > Cloud Messaging > Certificats Web Push > «Genera un parell de claus».
 // Enganxa aquí la clau pública. Mentre estigui buida, el botó d'avisos no surt.
-export const vapidKey = '';
+export const vapidKey = 'BHlKmmTPryY4PRLoNodFwo62xmV0FDj7Ki0cE52nud7qIPRuM5bf_SCFXPMbMQIRmDTzxAGLrQVjd8nq3wvnGrM';
 // Fitxer de dades. Per defecte, la captura inclosa; per tenir-les al dia, vegeu el README.
 export const statsUrl = 'data/stats.json';
 export const currentSeason = '2026-27';
