@@ -7,12 +7,16 @@
     "setup": "node scripts/setup.mjs",
     "stats": "node scripts/sync-stats.mjs",
     "deploy": "npx firebase-tools deploy --only hosting,firestore:rules",
-    "test:logic": "node --test test/logic.test.mjs",
+    "test:logic": "node --test test/logic.test.mjs test/notify.test.mjs",
     "test:rules": "npx firebase-tools emulators:exec --only firestore --project demo-quiniela \"node --test test/rules.test.mjs\"",
-    "build:preview": "node scripts/build-preview.mjs"
+    "build:preview": "node scripts/build-preview.mjs",
+    "notify": "node scripts/notify.mjs"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^4.0.1",
     "firebase": "^11.10.0"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.0.0"
   }
 }

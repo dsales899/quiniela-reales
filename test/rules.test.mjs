@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing';
-import { doc, setDoc, updateDoc, getDoc, writeBatch, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { doc, setDoc, updateDoc, getDoc, deleteDoc, writeBatch, serverTimestamp, Timestamp } from 'firebase/firestore';
 
 const CODES = { enric: 'ENRIC001', denis: 'DENIS001', pere: 'PERE0001', dani: 'DANI0001', pova: 'POVA0001', hector: 'HECT0001', albert: 'ALBE0001', boyer: 'BOYE0001' };
 const sha = (t) => createHash('sha256').update(t).digest('hex');
@@ -119,4 +119,16 @@ test('doble: un sí, dos no, triple no', async () => {
   await assertFails(pick(db, 'oberta', 'pere', { s2: 'X2' }));
   await assertFails(pick(db, 'oberta', 'pere', { s3: '1X2' }));
   await assertSucceeds(pick(db, 'oberta', 'pere', { s1: '1', s2: 'X2' }));
+});
+test('avisos: cadascú desa el seu dispositiu i ningú els llegeix', async () => {
+  const tok = (db, id, data) => setDoc(doc(db, 'pushTokens', id), { updatedAt: serverTimestamp(), ...data });
+  await assertSucceeds(tok(as('pere'), 'tok-pere', { player: 'pere', uid: 'uid-pere' }));
+  await assertFails(tok(as('pere'), 'tok-fals', { player: 'denis', uid: 'uid-pere' }));
+  await assertFails(tok(as('pere'), 'tok-fals', { player: 'pere', uid: 'uid-denis' }));
+  await assertFails(tok(as('pere'), 'tok-fals', { player: 'pere', uid: 'uid-pere', extra: 1 }));
+  await assertFails(tok(env.unauthenticatedContext().firestore(), 'tok-x', { player: 'pere', uid: 'uid-pere' }));
+  await assertFails(getDoc(doc(as('denis'), 'pushTokens', 'tok-pere')));
+  await assertFails(deleteDoc(doc(as('denis'), 'pushTokens', 'tok-pere')));
+  await assertSucceeds(deleteDoc(doc(as('pere'), 'pushTokens', 'tok-pere')));
+  await assertFails(getDoc(doc(as('denis'), 'notifs', 'oberta')));
 });

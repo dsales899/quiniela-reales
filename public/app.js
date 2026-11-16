@@ -50,6 +50,8 @@ export function startApp(store, opts = {}) {
     ad: { reason: '', otherNum: '', results: null, ple: null, note: '', show: null, resultsFor: null }, ed: null,
   };
   let unwatchPicks = null; let unwatchPay = null; let watchedId = null; let toastTimer = null;
+  const PUSH_HIDE = 'quiniela-reales-avisos-ara-no';
+  try { S.pushHide = localStorage.getItem(PUSH_HIDE) === '1'; } catch { S.pushHide = false; }
 
   // ---------- Dades derivades ----------
   const J = () => S.jornades.find((j) => j.id === S.selectedId) || null;
@@ -507,6 +509,26 @@ export function startApp(store, opts = {}) {
     } catch (e) { L.error = authError(e); L.pin = ''; } finally { L.busy = false; paint(); }
   }
 
+  // ---------- Avisos al mòbil ----------
+  const pushStatus = () => (store.push && S.session ? store.push.status() : null);
+  function pushCard() {
+    const st = pushStatus();
+    if (!['off', 'install', 'denied'].includes(st) || S.pushHide) return '';
+    const text = {
+      off: 'Vols que t’avisem al mòbil quan surti una jornada nova i 2 h abans que tanqui?',
+      install: 'Per rebre avisos a l’iPhone: toca Compartir › «Afegeix a la pantalla d’inici» i obre la Quiniela des d’allà.',
+      denied: 'Tens els avisos bloquejats. Activa’ls a la configuració del navegador per a aquesta web.',
+    }[st];
+    const on = st === 'off' ? `<button class="btn ink" data-act="push-on" ${S.pushBusy ? 'disabled' : ''}>${S.pushBusy ? 'Activant…' : 'Activa els avisos'}</button>` : '';
+    return `<section class="pad sec"><div class="pushcard"><p>🔔 ${esc(text)}</p><div class="pushbtns">${on}<button class="btn ghost" data-act="push-hide">Ara no</button></div></div></section>`;
+  }
+  function pushFooter() {
+    const st = pushStatus();
+    if (st === 'on') return '<br><small>🔔 Avisos activats</small>';
+    if (st === 'off' && S.pushHide) return '<br><button data-act="push-on">Activa els avisos</button>';
+    return '';
+  }
+
   // ---------- Pintat ----------
   function paint() {
     if (!S.session) { morph(root, loginView()); return; }
@@ -517,8 +539,8 @@ export function startApp(store, opts = {}) {
     if (S.tab === 'admin' && !isAdmin()) S.tab = 'jornada';
     morph(root, `<div class="app">${demo}<header class="topbar"><div class="topbar-in pad"><div class="brand">Quiniela <span>Reales</span></div><div>${save}</div></div>
       <nav class="tabs" role="tablist"><button role="tab" data-act="tab" data-v="jornada" aria-selected="${S.tab === 'jornada'}">Jornada</button><button role="tab" data-act="tab" data-v="dades" aria-selected="${S.tab === 'dades'}">Dades</button>${isAdmin() ? `<button role="tab" data-act="tab" data-v="admin" aria-selected="${S.tab === 'admin'}">Jornades</button>` : ''}</nav></header>
-      <main>${S.tab === 'jornada' ? ticket(j) : ''}${body}</main>
-      <footer class="footer pad"><span>Hola, ${esc(PLAYERS.find((p) => p.id === me())?.name || '')}<br><small>Escuts: FootyLogos.com</small></span><button data-act="logout">Tanca la sessió</button></footer></div>
+      <main>${S.tab === 'jornada' ? ticket(j) + pushCard() : ''}${body}</main>
+      <footer class="footer pad"><span>Hola, ${esc(PLAYERS.find((p) => p.id === me())?.name || '')}${pushFooter()}<br><small>Escuts: FootyLogos.com</small></span><button data-act="logout">Tanca la sessió</button></footer></div>
       ${S.copyText ? `<div class="toast" style="width:calc(100vw - 32px);max-width:560px;bottom:12px"><p style="margin-bottom:6px">No s’ha pogut copiar sol. Selecciona el text:</p><textarea class="copybox" id="copybox" readonly>${esc(S.copyText)}</textarea><button data-act="copy-close" style="text-decoration:underline;margin-top:5px;color:inherit">Tanca</button></div>` : ''}
       ${S.tab === 'admin' ? pickerSheet() : ''}
       ${S.toast ? `<div class="toast" role="status">${esc(S.toast)}</div>` : ''}`);
@@ -616,6 +638,18 @@ export function startApp(store, opts = {}) {
       a.download = `quiniela-reales-${(j.quinielaNum || j.id)}.csv`; a.click(); URL.revokeObjectURL(a.href); toast('CSV descarregat.');
     },
     logout: () => store.logout(),
+    async 'push-on'() {
+      if (S.pushBusy) return;
+      S.pushBusy = true; paint();
+      let msg = 'No s’han pogut activar els avisos. Torna-ho a provar.';
+      try {
+        const st = await store.push.enable();
+        if (st === 'on') msg = 'Avisos activats. T’avisarem al mòbil.';
+        else if (st === 'denied') msg = 'Avisos bloquejats. Els pots activar a la configuració del navegador.';
+      } catch { /* missatge per defecte */ }
+      S.pushBusy = false; toast(msg);
+    },
+    'push-hide': () => { S.pushHide = true; try { localStorage.setItem(PUSH_HIDE, '1'); } catch { /* res */ } paint(); },
     'copy-close': () => { S.copyText = ''; paint(); },
     'demo-reset': () => { store.resetDemo(); S.overlay = {}; S.errors = {}; toast('Dades d’exemple reiniciades.'); },
     'l-name': (b) => { Object.assign(S.login, { step: 'pin', player: b.dataset.v, pin: '', error: '' }); paint(); },
@@ -705,6 +739,7 @@ export function startApp(store, opts = {}) {
     S.session = session;
     unwatch.forEach((u) => u()); unwatch = [];
     if (!session) { unwatchPicks?.(); unwatchPicks = null; watchedId = null; S.selectedId = null; S.manual = false; Object.assign(S.login, { step: 'name', pin: '', error: '', first: false }); paint(); return; }
+    store.push?.refresh();
     unwatch.push(store.watchApp((app) => {
       S.app = app;
       if (app.activeId && (!S.manual || !S.selectedId)) { const j = S.jornades.find((x) => x.id === app.activeId); if (j) { S.season = j.season; selectJornada(app.activeId, false); } }

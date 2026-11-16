@@ -5,7 +5,11 @@ export const firebaseConfig = {
   authDomain: 'quiniela-reales.firebaseapp.com',
   projectId: 'quiniela-reales',
   appId: '1:52209825645:web:4724652c6ebc98ee90cc64',
+  messagingSenderId: '52209825645',
 };
+// Avisos al mòbil: Consola > Configuració del projecte > Cloud Messaging > Certificats Web Push > «Genera un parell de claus».
+// Enganxa aquí la clau pública. Mentre estigui buida, el botó d'avisos no surt.
+export const vapidKey = '';
 // Fitxer de dades. Per defecte, la captura inclosa; per tenir-les al dia, vegeu el README.
 export const statsUrl = 'data/stats.json';
 export const currentSeason = '2026-27';

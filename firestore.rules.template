@@ -75,6 +75,15 @@ service cloud.firestore {
       allow get: if true;
       allow write: if isAdmin();
     }
+    // Avisos al mòbil: cada dispositiu desa el seu identificador (el nom del document). Només el llegeix el servidor.
+    match /pushTokens/{token} {
+      allow create, update: if active()
+        && request.resource.data.keys().hasOnly(['player', 'uid', 'updatedAt'])
+        && request.resource.data.player == slug()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if active() && resource.data.uid == request.auth.uid;
+    }
     match /settings/{id} {
       allow read: if active();
       allow write: if isAdmin();

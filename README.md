@@ -56,6 +56,24 @@ Classificació i ratxa (últims 5 partits) de Primera, Segona, Champions, Europa
    `https://raw.githubusercontent.com/USUARI/REPOSITORI/main/public/data/stats.json`
    Si és privat, deixa `data/stats.json` i torna a publicar l'app quan vulguis (`npm run deploy`).
 
+## Avisos al mòbil
+
+Dos avisos, gratuïts amb Firebase Cloud Messaging i GitHub Actions:
+
+- Quan es publica una jornada nova: «Ei petardet🧨, la jornada 20 ja és activa, ompli-la ara!» (a tothom).
+- 2 h abans del termini: «Ei petardet🧨, queden 2h per omplir la jornada 20 , aspavil!» (només a qui encara no ha donat l'OK).
+
+`scripts/notify.mjs` ho comprova cada 10 minuts (`.github/workflows/avisos.yml`), així que l'avís pot arribar uns minuts tard. Cada avís surt un sol cop per jornada; si es canvia el termini, el recordatori torna a sortir.
+
+Per activar-los, un sol cop:
+
+1. **Clau del navegador.** Consola de Firebase > Configuració del projecte > **Cloud Messaging** > Certificats Web Push > **Genera un parell de claus**. Copia la clau pública a `vapidKey`, a `public/firebase-config.js`.
+2. **Clau del servidor.** Configuració del projecte > **Comptes de servei** > **Genera una clau privada nova**. Es baixa un fitxer JSON: no el pugis mai al repositori. A GitHub, **Settings > Secrets and variables > Actions > New repository secret**, nom `FIREBASE_SERVICE_ACCOUNT`, i enganxa-hi tot el contingut del fitxer.
+3. **Regles.** Les regles noves (`pushTokens`) són a `firestore.rules.template`. Afegeix el bloc a Firestore > Regles a la consola, o torna a generar `firestore.rules` i publica-les.
+4. A **Actions > Avisos al mòbil**, toca **Run workflow** per comprovar que va.
+
+Cada amic toca **Activa els avisos** a l'app. A l'iPhone (iOS 16.4 o posterior) només funciona si l'app s'ha afegit a la pantalla d'inici (Compartir > Afegeix a la pantalla d'inici) i s'obre des d'allà. En tancar la sessió, aquell mòbil deixa de rebre avisos.
+
 ## Límits del pla gratuït
 
 - Firestore: 1 GiB, 50.000 lectures i 20.000 escriptures al dia.

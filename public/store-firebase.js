@@ -4,7 +4,7 @@ import {
   getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut,
 } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js';
 import {
-  getFirestore, doc, getDoc, setDoc, updateDoc, collection, onSnapshot, writeBatch,
+  getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, collection, onSnapshot, writeBatch,
   serverTimestamp, Timestamp, arrayUnion,
 } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { PLAYERS, ADMINS_INICIALS } from './logic.js';
@@ -16,12 +16,16 @@ const fromDoc = (snap) => {
   const d = snap.data();
   return { ...d, id: snap.id, deadline: toMs(d.deadline), updatedAt: toMs(d.updatedAt) };
 };
+const MESSAGING = 'https://www.gstatic.com/firebasejs/11.10.0/firebase-messaging.js';
+const PUSH_KEY = 'quiniela-reales-avisos';
+const savedPush = () => { try { return JSON.parse(localStorage.getItem(PUSH_KEY)) || null; } catch { return null; } };
+const keepPush = (v) => { try { if (v) localStorage.setItem(PUSH_KEY, JSON.stringify(v)); else localStorage.removeItem(PUSH_KEY); } catch { /* sense memòria local */ } };
 const withTimeout = (promise) => Promise.race([
   promise,
   new Promise((_, reject) => setTimeout(() => reject(Object.assign(new Error('Sense connexió'), { code: 'unavailable' })), 9000)),
 ]);
 
-export function createFirebaseStore(config) {
+export function createFirebaseStore(config, { vapidKey = '' } = {}) {
   const app = initializeApp(config);
   const auth = getAuth(app);
   const db = getFirestore(app);
@@ -36,6 +40,52 @@ export function createFirebaseStore(config) {
     return `${playerId}${n ? `.${n}` : ''}@${DOMAIN}`;
   };
   const playerOf = (user) => user?.email?.split('@')[0].split('.')[0] || null;
+
+  // ---------- Avisos al mòbil (Firebase Cloud Messaging) ----------
+  // Cada dispositiu desa el seu identificador a pushTokens; scripts/notify.mjs hi envia els avisos.
+  async function pushToken() {
+    const reg = await navigator.serviceWorker.register('sw.js', { scope: './' });
+    const m = await import(MESSAGING);
+    if (!(await m.isSupported())) throw Object.assign(new Error('Sense avisos'), { code: 'unsupported' });
+    return m.getToken(m.getMessaging(app), { vapidKey, serviceWorkerRegistration: reg });
+  }
+  async function savePush(token) {
+    const player = session?.playerId; const old = savedPush();
+    await withTimeout(setDoc(doc(db, 'pushTokens', token), { player, uid: auth.currentUser.uid, updatedAt: serverTimestamp() }));
+    if (old?.token && old.token !== token) deleteDoc(doc(db, 'pushTokens', old.token)).catch(() => {});
+    keepPush({ player, token });
+  }
+  const push = vapidKey ? {
+    /** 'on', 'off', 'denied', 'install' (iPhone fora de la pantalla d'inici) o 'unsupported'. */
+    status() {
+      const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      const standalone = window.matchMedia?.('(display-mode: standalone)').matches || navigator.standalone === true;
+      // A l'iPhone només hi ha avisos si l'app s'ha afegit a la pantalla d'inici.
+      if (ios && !standalone) return 'install';
+      if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return 'unsupported';
+      if (Notification.permission === 'denied') return 'denied';
+      if (Notification.permission === 'granted' && savedPush()?.player === session?.playerId) return 'on';
+      return 'off';
+    },
+    async enable() {
+      // El permís s'ha de demanar el primer, just després del toc.
+      const perm = await Notification.requestPermission();
+      if (perm !== 'granted') return this.status();
+      await savePush(await pushToken());
+      return 'on';
+    },
+    /** En obrir l'app: si ja estan activats, es renova l'identificador (Firebase el canvia de tant en tant). */
+    async refresh() {
+      if (this.status() !== 'on') return;
+      try { await savePush(await pushToken()); } catch { /* es tornarà a provar la propera vegada */ }
+    },
+  } : null;
+  async function forgetPush() {
+    const saved = savedPush();
+    if (!saved?.token || saved.player !== session?.playerId) return;
+    keepPush(null);
+    await deleteDoc(doc(db, 'pushTokens', saved.token)).catch(() => {});
+  }
 
   return {
     mode: 'firebase',
@@ -69,7 +119,9 @@ export function createFirebaseStore(config) {
         throw Object.assign(new Error('Codi d’invitació incorrecte'), { code: 'bad-invite' });
       }
     },
-    logout: () => signOut(auth),
+    push,
+    // En tancar la sessió, aquest mòbil deixa de rebre els avisos d'aquesta persona.
+    async logout() { await withTimeout(forgetPush()).catch(() => {}); await signOut(auth); },
     watchApp(cb) {
       let settings = {}; let access = {};
       const push = () => cb({ activeId: settings.activeId || null, access });
